@@ -19,6 +19,11 @@ library
                   , ekg-core
                   , libinfluxdb
                   , containers
+                  , unordered-containers
+                  , time
+                  , clock
+                  , text
+                  , vector
   hs-source-dirs:   src
   default-language: Haskell2010
   ghc-options:      -Wall -O2
