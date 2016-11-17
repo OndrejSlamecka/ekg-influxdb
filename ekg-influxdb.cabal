@@ -16,14 +16,14 @@ cabal-version:       >=1.10
 library
   exposed-modules:  System.Remote.Monitoring.Influxdb
   build-depends:    base >=4.9 && <4.10
-                  , ekg-core
-                  , libinfluxdb
-                  , containers
-                  , unordered-containers
-                  , time
-                  , clock
-                  , text
-                  , vector
+                  , ekg-core >= 0.1
+                  , libinfluxdb >= 0.0.4
+                  , containers >= 0.5.7
+                  , unordered-containers >= 0.2.7
+                  , time >= 1.6
+                  , clock >= 0.7
+                  , text >= 1.2.2
+                  , vector >= 0.11
   hs-source-dirs:   src
   default-language: Haskell2010
   ghc-options:      -Wall -O2
