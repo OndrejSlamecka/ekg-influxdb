@@ -23,19 +23,19 @@ module System.Remote.Monitoring.Influxdb
   ) where
 
 import Data.Monoid ((<>))
-import qualified Data.Time.Clock.POSIX as Time
+import Data.Time.Clock as Time (getCurrentTime, diffUTCTime, UTCTime)
 import qualified Data.Text as T
 import qualified System.Metrics as EKG
 import qualified System.Metrics.Distribution as Stats
-import           System.Clock
 import qualified Data.Map as M
 import qualified Data.Vector as V
-import qualified Database.InfluxDB.Writer as Influxdb
+import qualified Database.InfluxDB as Influxdb
 import Control.Exception (SomeException, try, bracket)
 import Control.Concurrent (ThreadId, forkIO, myThreadId, threadDelay, throwTo)
 import Control.Monad (forever)
 import qualified Data.HashMap.Strict as HashMap
-import Data.Int (Int64)
+import Control.Lens ((&), (.~))
+import Data.String (fromString)
 
 --------------------------------------------------------------------------------
 -- | Options to control how to connect to the Influxdb server and how often to
@@ -108,43 +108,36 @@ forkInfluxdbRestart :: InfluxdbOptions
                     -> EKG.Store
                     -> (SomeException -> IO () -> IO ())
                     -> IO ThreadId
-forkInfluxdbRestart opts store exceptionHandler = do
-  eHandle <- Influxdb.createHandle (Influxdb.Config $ T.unpack ("http://" <> host opts <> ":" <> T.pack (show (port opts)) <> "/" <> database opts))
-  handle <- case eHandle of
-    Right h -> return $ h
-    _ -> unsupportedAddressError
-  let go = do
+forkInfluxdbRestart opts store exceptionHandler = forkIO go
+  where
+    params = (Influxdb.writeParams (fromString . T.unpack $ database opts))
+             & Influxdb.server . Influxdb.host .~ (fromString . T.unpack $ host opts)
+             & Influxdb.server . Influxdb.port .~ (port opts)
+    go = do
         terminated <-
           try $ bracket
-          (return handle)
+          (return params)
           (\_ -> return ())
           (loop store opts)
         case terminated of
           Left exception -> exceptionHandler exception go
           Right _ -> go
-  forkIO go
-  where unsupportedAddressError =
-          ioError (userError ("unsupported address: " ++ T.unpack (host opts)))
-
 
 --------------------------------------------------------------------------------
-loop :: EKG.Store -> InfluxdbOptions -> Influxdb.Handle -> IO ()
-loop store opts handle = forever $ do
-  start <- time
+loop :: EKG.Store -> InfluxdbOptions -> Influxdb.WriteParams -> IO ()
+loop store opts params = forever $ do
+  start <- getCurrentTime
   sample <- EKG.sampleAll store
-  flushSample sample handle opts
-  end <- time
-  threadDelay (flushInterval opts * 1000 - fromIntegral (end - start))
+  flushSample sample params opts
+  end <- getCurrentTime
+  let diff :: Int
+      diff = fromIntegral (truncate (diffUTCTime end start * 1000))
+  threadDelay (flushInterval opts * 1000 - diff)
 
--- | Microseconds since epoch.
-time :: IO Int64
-time = (round . (* 1000000.0) . toDouble) `fmap` Time.getPOSIXTime
-  where toDouble = realToFrac :: Real a => a -> Double
-
-flushSample :: EKG.Sample -> Influxdb.Handle -> InfluxdbOptions -> IO ()
-flushSample sample handle opts = do
-  t <- getTime Realtime
-  sendMetrics handle
+flushSample :: EKG.Sample -> Influxdb.WriteParams -> InfluxdbOptions -> IO ()
+flushSample sample params opts = do
+  t <- getCurrentTime
+  sendMetrics params
     (V.map renamed
       (HashMap.foldlWithKey' (\ms k v -> metrics k v t <> ms)
         V.empty
@@ -172,12 +165,11 @@ flushSample sample handle opts = do
 data Metric = Metric
   { path  :: !T.Text
   , value :: !Double
-  , timestamp :: !TimeSpec
+  , timestamp :: !UTCTime
   } deriving (Show)
 
-sendMetrics :: Influxdb.Handle -> V.Vector Metric -> IO ()
-sendMetrics handle metrics = V.forM_ metrics $ \metric -> do
+sendMetrics :: Influxdb.WriteParams -> V.Vector Metric -> IO ()
+sendMetrics params metrics = V.forM_ metrics $ \metric -> do
   let tags   = M.empty
-      values = M.singleton "value" (Influxdb.F (value metric))
-      ts     = fromIntegral . toNanoSecs $ (timestamp metric)
-    in Influxdb.writePoint' handle (path metric) tags values ts
+      values = M.singleton "value" (Influxdb.FieldFloat (value metric))
+    in Influxdb.write params $ Influxdb.Line (fromString . T.unpack $ path metric) tags values (Just (timestamp metric))

@@ -1,5 +1,5 @@
 # Revision history for ekg-influxdb
 
-## 0.1.0.0  -- YYYY-mm-dd
+## 0.1.1.0  -- 2017-08-01
 
-* First version. Released on an unsuspecting world.
+* Replace libinfluxdb with influxdb.
