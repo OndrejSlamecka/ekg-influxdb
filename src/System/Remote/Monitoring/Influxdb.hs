@@ -3,9 +3,10 @@
 -- | This module lets you periodically flush metrics to a influxdb
 -- backend. Example usage:
 --
+-- > import qualified Database.Influxdb as Influxdb
 -- > main = do
 -- >   store <- newStore
--- >   forkInfluxdb defaultInfluxdbOptions store
+-- >   forkInfluxdb (defaultInfluxdbOptions (Influxdb.writeParams "database")) store
 --
 -- You probably want to include some of the predefined metrics defined
 -- in the @ekg-core@ package, by calling e.g. the 'EKG.registerGcMetrics'
@@ -34,7 +35,6 @@ import Control.Exception (SomeException, try, bracket)
 import Control.Concurrent (ThreadId, forkIO, myThreadId, threadDelay, throwTo)
 import Control.Monad (forever)
 import qualified Data.HashMap.Strict as HashMap
-import Control.Lens ((&), (.~))
 import Data.String (fromString)
 
 --------------------------------------------------------------------------------
@@ -42,12 +42,8 @@ import Data.String (fromString)
 -- flush metrics. The flush interval should match the shortest retention rate of
 -- the matching retention periods, or you risk over-riding previous samples.
 data InfluxdbOptions = InfluxdbOptions
-  { -- | The hostname or IP address of the server running influxdb
-    host :: !T.Text
-    -- | Server port of the TCP line receiver interface.
-  , port :: !Int
-    -- | The Influxdb database name
-  , database :: !T.Text
+  { -- | The write parameters for Influxdb.
+    writeParams :: !Influxdb.WriteParams
     -- | The amount of time between sampling EKG metrics and pushing to Influxdb.
   , flushInterval :: !Int
     -- | Prefix to add to all matric names.
@@ -57,23 +53,17 @@ data InfluxdbOptions = InfluxdbOptions
     -- @takeWhile (/= \'.\') \<$\> getHostName@, using @getHostName@
     -- from the @Network.BSD@ module in the network package.
   , suffix :: !T.Text
-  } deriving (Eq, Show)
+  }
 
 --------------------------------------------------------------------------------
 -- | Defaults
 --
--- * @host@ = @\"127.0.0.1\"@
---
--- * @port@ = @8086@
---
 -- * @flushInterval@ = @1000@
 --
--- * Empty 'database', 'prefix' and 'suffix'.
-defaultInfluxdbOptions :: InfluxdbOptions
-defaultInfluxdbOptions = InfluxdbOptions
-    { host          = "127.0.0.1"
-    , port          = 8086
-    , database      = ""
+-- * Empty 'prefix' and 'suffix'.
+defaultInfluxdbOptions :: Influxdb.WriteParams -> InfluxdbOptions
+defaultInfluxdbOptions params = InfluxdbOptions
+    { writeParams   = params
     , flushInterval = 1000
     , prefix        = ""
     , suffix        = ""
@@ -110,13 +100,10 @@ forkInfluxdbRestart :: InfluxdbOptions
                     -> IO ThreadId
 forkInfluxdbRestart opts store exceptionHandler = forkIO go
   where
-    params = (Influxdb.writeParams (fromString . T.unpack $ database opts))
-             & Influxdb.server . Influxdb.host .~ (fromString . T.unpack $ host opts)
-             & Influxdb.server . Influxdb.port .~ (port opts)
     go = do
         terminated <-
           try $ bracket
-          (return params)
+          (return (writeParams opts))
           (\_ -> return ())
           (loop store opts)
         case terminated of
