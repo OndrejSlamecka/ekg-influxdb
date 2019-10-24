@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:  System.Remote.Monitoring.Influxdb
-  build-depends:    base >=4.9 && <4.11
+  build-depends:    base >=4.9 && <5
                   , ekg-core >= 0.1
                   , influxdb >= 1.2
                   , containers >= 0.5.7
