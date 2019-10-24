@@ -131,7 +131,7 @@ loop store opts params = forever $ do
   flushSample sample params opts
   end <- getCurrentTime
   let diff :: Int
-      diff = fromIntegral (truncate (diffUTCTime end start * 1000))
+      diff = truncate (diffUTCTime end start * 1000)
   threadDelay (flushInterval opts * 1000 - diff)
 
 flushSample :: EKG.Sample -> Influxdb.WriteParams -> InfluxdbOptions -> IO ()
