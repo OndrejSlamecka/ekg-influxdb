@@ -154,8 +154,7 @@ flushSample sample params opts = do
   metrics _ (EKG.Label {}) _ = V.empty
   metrics n (EKG.Distribution stats) t =
     let f n' v = Metric ("dist." <> n <> "." <> n') v t
-    in V.fromList [ f "mean" (Stats.mean stats)
-                  , f "variance" (Stats.variance stats)
+    in V.fromList [ f "variance" (Stats.variance stats)
                   , f "count" (fromIntegral $ Stats.count stats)
                   , f "sum" (Stats.sum stats)
                   , f "min" (Stats.min stats)
